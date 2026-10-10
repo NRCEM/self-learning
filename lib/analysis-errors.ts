@@ -1,3 +1,4 @@
+import { errorText } from './i18n.ts';
 export class AnalysisError extends Error {
   readonly status: number;
   readonly code: string;
@@ -29,15 +30,15 @@ export function mapGeminiError(error: unknown): AnalysisError {
   if (error instanceof AnalysisError) return error;
   const value = typeof error === 'object' && error !== null ? error as { status?: unknown; name?: unknown; message?: unknown; cause?: { code?: unknown } } : {};
   const status = Number(value.status);
-  if (status === 429) return new AnalysisError(429, 'QUOTA_EXCEEDED', 'Gemini đang giới hạn lượt gọi hoặc đã hết quota. Kiểm tra quota rồi thử lại sau.');
-  if (status === 401 || status === 403) return new AnalysisError(503, 'API_ACCESS_ERROR', 'Gemini từ chối API key hoặc quyền truy cập. Kiểm tra cấu hình backend.');
-  if (status === 404) return new AnalysisError(503, 'MODEL_UNAVAILABLE', 'Model Gemini chưa khả dụng. Kiểm tra GEMINI_MODEL trong .env.local.');
-  if (status === 400) return new AnalysisError(422, 'DOCUMENT_REJECTED', 'Gemini không xử lý được PDF hoặc cấu hình model. Thử PDF không có mật khẩu, ngắn hơn và kiểm tra GEMINI_MODEL.');
-  if (status === 503) return new AnalysisError(503, 'GEMINI_BUSY', 'Gemini đang quá tải hoặc tạm thời không khả dụng. Chờ một chút rồi thử lại.');
-  if (status === 504) return new AnalysisError(504, 'GEMINI_TIMEOUT', 'Gemini hết thời gian xử lý tài liệu (90 giây). Vui lòng thử lại hoặc chọn model PDF khác trong cấu hình backend.');
-  if (status >= 500 && status <= 599) return new AnalysisError(502, 'GEMINI_SERVER_ERROR', 'Dịch vụ Gemini gặp lỗi khi xử lý tài liệu. Vui lòng thử lại sau.');
+  if (status === 429) return new AnalysisError(429, 'QUOTA_EXCEEDED', errorText('en', 'QUOTA_EXCEEDED'));
+  if (status === 401 || status === 403) return new AnalysisError(503, 'API_ACCESS_ERROR', errorText('en', 'API_ACCESS_ERROR'));
+  if (status === 404) return new AnalysisError(503, 'MODEL_UNAVAILABLE', errorText('en', 'MODEL_UNAVAILABLE'));
+  if (status === 400) return new AnalysisError(422, 'DOCUMENT_REJECTED', errorText('en', 'DOCUMENT_REJECTED'));
+  if (status === 503) return new AnalysisError(503, 'GEMINI_BUSY', errorText('en', 'GEMINI_BUSY'));
+  if (status === 504) return new AnalysisError(504, 'GEMINI_TIMEOUT', errorText('en', 'GEMINI_TIMEOUT'));
+  if (status >= 500 && status <= 599) return new AnalysisError(502, 'GEMINI_SERVER_ERROR', errorText('en', 'GEMINI_SERVER_ERROR'));
   if (value.name === 'AbortError' || value.name === 'TimeoutError' || /timeout|timed out|aborted/i.test(String(value.message ?? ''))) {
-    return new AnalysisError(504, 'GEMINI_TIMEOUT', 'Gemini chưa phản hồi trong thời gian cho phép (90 giây). Hãy thử lại hoặc dùng tài liệu ít trang hơn.');
+    return new AnalysisError(504, 'GEMINI_TIMEOUT', errorText('en', 'GEMINI_TIMEOUT'));
   }
-  return new AnalysisError(502, 'GEMINI_NETWORK_ERROR', 'Kết nối từ backend tới Gemini bị gián đoạn. Kiểm tra mạng của máy chạy server rồi thử lại.');
+  return new AnalysisError(502, 'GEMINI_NETWORK_ERROR', errorText('en', 'GEMINI_NETWORK_ERROR'));
 }

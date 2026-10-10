@@ -1,108 +1,120 @@
-# self-learning — MVP
+# self-learning
 
-Website học bằng PDF: upload → tổng quan → chọn đề mục → bài giảng tiếng Việt, công thức KaTeX, video YouTube và quiz riêng 5 câu. Next.js App Router + TypeScript + React; backend dùng Gemini SDK chính thức và YouTube Data API v3. Chưa có đăng nhập, database hoặc lưu tiến độ bền vững.
+Turn a PDF into an overview, topic-based lessons, related YouTube videos and five-question quizzes. Built with Next.js App Router, TypeScript, React, the official Gemini SDK, Zod and KaTeX.
 
-## Cấu hình và chạy
+English is the default. The language selector is available on every screen and remembers English / Tiếng Việt in the browser. Generated content follows the selected language even when the PDF uses another language.
 
-Yêu cầu Node.js 24 và npm. Tại thư mục project:
+## Run locally
+
+Requires Node.js 24 and npm.
 
 ```powershell
 npm ci
 if (-not (Test-Path .env.local)) { Copy-Item .env.example .env.local }
 ```
 
-Tự điền vào `.env.local` (giữ file này ngoài Git):
+Fill in `.env.local` with your own credentials:
 
 ```dotenv
-GEMINI_API_KEY=your_gemini_key_here
+GEMINI_API_KEY=your_gemini_key
 GEMINI_MODEL=gemini-3.5-flash-lite
-YOUTUBE_API_KEY=your_youtube_key_here
+YOUTUBE_API_KEY=your_youtube_key
 ```
 
-- **Gemini:** tạo key ở [Google AI Studio](https://aistudio.google.com/apikey). `GEMINI_MODEL` là tùy chọn; mặc định model ở trên, phải có quyền sử dụng và hỗ trợ PDF/structured output. MVP giữ model đã chạy thành công; không tự đổi model, bật billing hay retry.
-- **YouTube:** mở [Google Cloud Console](https://console.cloud.google.com/), chọn/tạo project → APIs & Services → Library → **YouTube Data API v3 → Enable** → Credentials → Create credentials → **API key**. Giới hạn API cho YouTube Data API v3. Nếu giới hạn ứng dụng cho key, dùng IP backend phù hợp; HTTP referrer dành cho browser không phù hợp request backend. Tìm video công khai chỉ cần key, không cần OAuth. Xem [hướng dẫn chính thức](https://developers.google.com/youtube/registering_an_application).
-- Cả hai key chỉ dùng backend, có `server-only`. Không dùng tiền tố `NEXT_PUBLIC_`. `.env.example` chỉ chứa key trống. Sau khi đổi env, restart server. Môi trường deploy cần tự cấu hình các biến tương ứng.
+- Create a Gemini key in [Google AI Studio](https://aistudio.google.com/apikey). The configured model must be available to your project and support PDF input and structured output. The default preserves the model tested by this project. The app does not enable billing, select fallback models or automatically retry failed requests.
+- In [Google Cloud Console](https://console.cloud.google.com/), select a project, enable **YouTube Data API v3**, then create an API key under **APIs & Services → Credentials**. Restrict the key to YouTube Data API v3. Backend requests need compatible application restrictions; browser referrer restrictions are unsuitable. Public video search does not require OAuth. See [Google's setup guide](https://developers.google.com/youtube/registering_an_application).
+- Both keys are backend-only. Never use `NEXT_PUBLIC_` for credentials. Restart the server after changing environment variables. `.env.local`, PDFs and diagnostic outputs are ignored by Git.
 
 ```powershell
 npm run dev
 ```
 
-Mở [localhost:3000](http://localhost:3000); nếu cổng bận, xem cổng terminal in ra. Ctrl+C để dừng. Chạy production cục bộ:
+Open [localhost:3000](http://localhost:3000). For a local production build:
 
 ```powershell
 npm run build
 npm start
 ```
 
-## Kiểm tra
+## Features and usage
+
+1. Select an unencrypted, valid PDF up to 10 MB. Analyze it to view the title, subject, summary and topics with physical PDF page references.
+2. Open a topic to generate a lesson using the original PDF and selected topic. Lessons include objectives, explanations, formulas and symbols/units, worked examples, misconceptions and five multiple-choice questions. Added examples are explicitly labeled.
+3. Answer all questions and submit. Scoring runs in code: each correct answer earns two points. Correct answers and explanations appear after submission. Retaking clears only that topic's answers and result.
+4. Related videos load independently. Each card links to the original YouTube video and displays its original title, channel, thumbnail and reported language, when available. There is no embedded player.
+5. Change language at any point. Existing overviews and lessons are translated, preserving topic IDs, question IDs, option positions and correct answers. Your choices and score remain attached to the topic. Only the overview and currently opened lesson are requested; unopened lessons are created on demand.
+6. Return to a cached topic or language without additional API calls. Choose another PDF to clear all document content, videos and quiz state. Reloading also clears document state; only the language preference persists.
+
+## Data flow and code map
+
+| File | Responsibility |
+| --- | --- |
+| `app/page.tsx` | PDF selection, screen navigation, requests, language-specific content lookup and frontend Zod validation |
+| `app/components/language-provider.tsx` | Language context, selector, browser preference and document `lang` |
+| `lib/i18n.ts` | English/Vietnamese UI dictionary and error-code translations |
+| `lib/language.ts` | Allowed language values and backend FormData validation |
+| `lib/document-session.ts` | In-memory document cache, canonical content, language variants, request deduplication, cancellation and shared quiz state |
+| `app/components/document-overview.tsx` | Document summary and topic selection |
+| `app/components/lesson-view.tsx` | Topic navigation, lesson content, quiz controls and results |
+| `app/components/math-text.tsx`, `lib/math-format.ts` | Safe text-based rendering of LaTeX with KaTeX |
+| `app/components/topic-videos.tsx` | Independent video loading, errors, language labels and YouTube links |
+| `app/globals.css`, `app/layout.tsx` | Responsive layout, metadata and shared providers/styles |
+| `app/api/*/route.ts` | Server route entry points |
+| `lib/pdf-upload.ts` | Bounded multipart parsing and PDF validation |
+| `lib/analyze-handler.ts`, `lib/lesson-handler.ts` | Input/context validation and validated Gemini responses |
+| `lib/translate-handler.ts` | Translation input validation and protected-field comparison |
+| `lib/gemini.ts`, `lib/gemini-config.ts` | Server-only SDK calls, language-aware prompts, structured output, shared model/timeout settings |
+| `lib/analysis-schema.ts`, `lib/lesson-schema.ts` | Runtime schemas, page checks and deterministic quiz scoring |
+| `lib/video-handler.ts`, `lib/youtube.ts`, `lib/video-schema.ts` | Validated video requests, real YouTube metadata and query construction |
+| `lib/analysis-errors.ts`, `lib/video-errors.ts` | Safe upstream error mapping; credentials never sent to the browser |
+
+**Overview:** original browser `File` → FormData `{file, language}` → `/api/analyze` → PDF validation → Gemini → Zod → language cache → overview.
+
+**Lesson:** original PDF + `{topic, language}` → `/api/lesson` → validated topic/page context → Gemini → Zod → topic/language cache. Quiz answers live in a separate topic-ID map shared by all language variants.
+
+**Translation:** original PDF + `{kind, source, language}` → `/api/translate` → source schema/page validation → Gemini translates existing content → target Zod validation and structural comparison → target-language cache. The comparison rejects changed IDs, array sizes/order of protected values, source pages, answers, example origin, formula fields, symbol fields, delimited math and numeric values within each text field. It cannot mechanically prove semantic equivalence of every prose sentence or option; review AI explanations against the PDF. The source document remains the context for translation.
+
+**Video:** `{topicId, name, subject, concepts, language}` → `/api/videos` → YouTube `search.list` with `relevanceLanguage=en|vi`, relevance ordering and up to six candidates → `videos.list` for reported language → prefer matching reported language among relevant candidates → at most three cards. Titles are never translated. YouTube's language preference permits other languages, and metadata can be absent or inaccurate. See [search.list](https://developers.google.com/youtube/v3/docs/search/list) and [video snippet metadata](https://developers.google.com/youtube/v3/docs/videos#snippet).
+
+Requests are deduplicated by document, content kind, topic ID and language. Concurrent language requests share one initial generation per topic, then translate that same content. Late responses populate only their own cache entry. Replacing the PDF aborts requests and invalidates late results, including responses with the same topic ID. Cached errors require an explicit retry. YouTube failures do not block lessons or quizzes. No sample data is substituted for errors.
+
+`lib/lesson-session.ts` and `lib/video-session.ts` retain legacy session helpers covered by regression tests; the current UI uses `DocumentSession`. `lib/demo-data.ts` is an unused historical fixture, not imported by the active UI or APIs.
+
+## Checks and manual verification
 
 ```powershell
 npm run typecheck
 npm test
 npm run build
+npm run check:secrets
 ```
 
-Các test không cần key, không gọi Google thật. Xem [MVP-QA.md](MVP-QA.md) để phân biệt kiểm chứng thực tế và lỗi được mô phỏng trong test.
+Tests use controlled fixtures and do not call Google. The secret audit checks staged files and browser build assets for configured keys and private-file paths. See [MVP-QA.md](MVP-QA.md) for the exact scope of live verification.
 
-Để tự kiểm tra giao diện:
+Manual checklist:
 
-1. Chọn PDF hợp lệ, không mật khẩu, dưới 10 MB → phân tích → đối chiếu tiêu đề, tóm tắt, đề mục và trang nguồn.
-2. Mở đề mục: bài học và video tải song song. Xem mục tiêu, kiến thức, công thức/ký hiệu/đơn vị, ví dụ và nhầm lẫn. Ví dụ bổ sung được gắn nhãn riêng.
-3. Chọn đủ 5 câu → nộp → xem điểm /10, đáp án và giải thích. Chuyển bài rồi quay lại: vẫn giữ đúng đáp án/điểm. Mở bài cũ không có POST thêm trong Network hoặc log backend. “Làm lại quiz” chỉ xóa đáp án/điểm của bài đó.
-4. Video có thumbnail, tên kênh và link YouTube thật. Kiểm tra link mở đúng video; video mở tab mới, không nhúng player. Nút “Thử lại video” chỉ gọi YouTube, không gọi lại Gemini.
-5. Quay lại tổng quan giữ phiên; chọn PDF khác xóa tổng quan, bài, quiz và video của tài liệu cũ. Reload cũng xóa phiên. Chuyển đề mục khi tải không được hiện nhầm kết quả.
-6. File sai định dạng/rỗng/quá dung lượng/hỏng phải báo lỗi. Khi Gemini hoặc YouTube lỗi, thông báo phải hiện rõ và không fallback mẫu. Lỗi YouTube vẫn đọc bài/làm quiz được. Chỉ thao tác thử lại mới gọi thêm API cho lỗi đó.
-7. Kiểm tra điện thoại 375px: mục lục cuộn ngang, nội dung một cột; công thức và bảng dài cuộn trong khung. Dùng Tab để kiểm tra thao tác bàn phím.
+- With no stored preference, run upload → overview → lesson → videos → quiz entirely in English.
+- Select Tiếng Việt before uploading. Confirm generated content is Vietnamese even for an English PDF.
+- Change language from the overview, during a lesson and after quiz submission. Compare question IDs/option positions, checked choices, correct answers and score. Return to cached languages/topics and confirm no extra POST requests in DevTools Network or backend logs.
+- Switch languages/topics rapidly while a request loads. Confirm the visible content always belongs to the current selection. Replace the PDF during loading and verify that old content never appears.
+- Test invalid, empty, oversized and broken PDFs. Test missing API configuration in a separate server process; never publish credentials. Errors should be localized and explicit retry should work. Video errors must leave the lesson and quiz usable.
+- At a 375 px mobile width, inspect the language selector, horizontally scrolling topic list, formula/table scrolling, radio controls and result panel. Check keyboard navigation and accessible control labels.
 
-## Flow dữ liệu và file chính
-
-### Frontend và phiên học
-
-- `app/page.tsx`: giữ `File` PDF gốc trong RAM trình duyệt, điều khiển upload/loading/tổng quan/bài học, gọi endpoint và kiểm tra Zod trước khi render. File không tự lưu vào localStorage hoặc database.
-- `app/components/document-overview.tsx`: tổng quan và nút mở đề mục thật.
-- `app/components/lesson-view.tsx`: mục lục, bài giảng, quiz và kết quả. `math-text.tsx` + `lib/math-format.ts` hiển thị LaTeX bằng KaTeX; ghi nội dung model bằng text, không render HTML từ model.
-- `app/components/topic-videos.tsx`: loading, lỗi/thử lại, rỗng hoặc tối đa 3 thẻ video.
-- `lib/lesson-session.ts`: Map bài học/quiz theo topicId; dùng chung request đang chạy, không gọi lại bài đã tạo. `lib/video-session.ts` cache video riêng, kể cả kết quả rỗng/lỗi. Cả hai hủy request và bỏ phản hồi đến muộn khi đổi PDF, kể cả tài liệu mới có cùng topicId.
-- `app/globals.css`: bố cục và responsive; `app/layout.tsx`: metadata, tiếng Việt và CSS KaTeX.
-
-### Backend và Gemini
-
-`File` → FormData trường `file` → POST `/api/analyze` → `app/api/analyze/route.ts` → `lib/analyze-handler.ts` → `lib/gemini.ts` → Zod `lib/analysis-schema.ts` → `{data}` → tổng quan.
-
-Chọn đề mục → FormData gồm PDF gốc `file` + JSON `topic` (id, tên, mô tả, trang nguồn) → POST `/api/lesson` → `lib/lesson-handler.ts` → cùng model/cấu hình Gemini → `lib/lesson-schema.ts` → `{data}` → cache và bài học.
-
-`lib/pdf-upload.ts` kiểm tra body stream, một file, kích thước, MIME, phần mở rộng, chữ ký PDF và dùng `pdf-lib` kiểm tra tài liệu đọc được/có trang. Tổng quan và bài học đều kiểm tra số trang nguồn không vượt PDF. Gemini nhận PDF inline base64, không chỉ tóm tắt. JSON Schema thu gọn hướng dẫn structured output; Zod kiểm tra đầy đủ chuỗi, số lượng, đúng đề mục, 5 quiz × 4 lựa chọn khác nhau, đáp án 0–3 và ID câu duy nhất. `lib/analysis-errors.ts` chuyển lỗi thành `{error:{code,message}}`; không trả key hoặc lỗi Google thô cho frontend.
-
-### YouTube
-
-Mở đề mục → JSON `{topicId,name,subject,concepts}` từ metadata đề mục → POST `/api/videos` → `lib/video-handler.ts` → `lib/youtube.ts` → YouTube `search.list` → Zod `lib/video-schema.ts` → cache video riêng. Request này không gửi PDF.
-
-Query gồm tên đề mục, môn học và tối đa 6 từ khóa thêm từ mô tả; loại từ nối/trùng/toán tử. Dùng `type=video`, `part=snippet`, `maxResults=3`, `order=relevance`, `relevanceLanguage=vi`. Giữ thứ tự liên quan của YouTube; tiếng Anh và ngôn ngữ khác vẫn có thể xuất hiện. Tiêu đề/kênh/thumbnail/ID chỉ lấy từ API, giải mã ký tự HTML thành text; không để Gemini tạo link. Xem [search.list](https://developers.google.com/youtube/v3/docs/search/list).
-
-### Quiz
-
-`lib/lesson-schema.ts` chứa `gradeLesson`: đếm đáp án trùng `correctIndex`, mỗi câu 2 điểm. Chấm hoàn toàn trong code frontend; không gọi Gemini khi nộp. Câu hỏi, đáp án và giải thích do Gemini tạo riêng cho đề mục. Đây là quiz tự học, đáp án đã có trong dữ liệu frontend; không dùng cho thi có bảo mật đáp án. `lib/demo-data.ts` là dữ liệu cũ, không được import vào UI/API thật và không dùng làm fallback.
-
-## Giới hạn MVP trước deploy
-
-- PDF tối đa **10 MB**, multipart body tối đa 10 MB + 64 KB; request video JSON tối đa 8 KB. PDF hỏng/mật khẩu/không có trang bị từ chối. Parser xác minh khả năng đọc, không bảo đảm mọi trang có nội dung hữu ích.
-- Gemini SDK timeout **90 giây**, frontend 110 giây; YouTube backend 15 giây, frontend 20 giây. Không retry tự động hoặc vô hạn. Hạn mức/model của tài khoản vẫn áp dụng.
-- Cache chỉ trong RAM phiên tab; reload/đổi PDF mất tiến độ. Server không lưu PDF hoặc kết quả vào database; PDF và metadata được chuyển tới các dịch vụ tương ứng khi gọi API.
-- AI có thể sai kiến thức, phép tính hoặc gán sai trang. Zod kiểm tra cấu trúc và phạm vi số trang, không chứng minh nội dung trên trang. Video là kết quả tìm kiếm, chưa duyệt chất lượng thủ công, có thể bị xóa/hạn chế sau đó.
-- Chưa có xác thực, rate limit theo người dùng hoặc giới hạn chi phí ứng dụng. Backend công khai khi deploy có thể bị gọi để tiêu quota. Cần xác định cách kiểm soát quota và host phù hợp trước khi mở công khai.
-- Host có thể đặt giới hạn body/timeout thấp hơn MVP. `maxDuration` trong route không bảo đảm host hỗ trợ 90 giây/10 MB. Chưa kiểm chứng trên host deploy hoặc kiểm thử tải nhiều người dùng.
-
-## Git và bảo vệ dữ liệu riêng
-
-`.gitignore` bỏ qua `.env*` (trừ `.env.example`), mọi PDF, `tmp/`, dependencies, build và cache TypeScript. PDF riêng dùng để kiểm tra không nằm trong commit. Không dùng `git add -f` cho file riêng. Trước commit:
+Live bilingual diagnostic (calls configured Google services and consumes quota):
 
 ```powershell
-git add .
-npm run check:secrets
-git diff --cached --stat
-git commit -m "Finalize self-learning MVP"
+node --experimental-strip-types --conditions=react-server scripts/verify-languages.mjs path/to/private.pdf
 ```
 
-`scripts/audit-secrets.mjs` kiểm tra chính nội dung staged, chặn env/PDF/tmp, key Google thật hoặc key đang cấu hình, đồng thời kiểm tra assets frontend đã build. Chỉ in tên file vi phạm, không in key. Đây là kiểm tra hỗ trợ, không thay thế việc rà soát các secret khác. Chạy build trước để kiểm tra assets mới nhất.
+It checks English generation, Vietnamese translation with preserved protected fields, and video requests in both languages. Outputs go to ignored `tmp/diagnostics/`. Historical troubleshooting is recorded in [GEMINI-DIAGNOSIS.md](GEMINI-DIAGNOSIS.md).
 
-Các script `scripts/diagnose-pdf.mjs`/`diagnose-lesson.mjs` hỗ trợ kiểm chứng PDF riêng đặt cục bộ; kết quả nằm trong `tmp/diagnostics/`, không dùng làm fallback. `GEMINI-DIAGNOSIS.md` giữ lịch sử chẩn đoán, không phải báo cáo trạng thái hiện tại.
+## MVP limits
+
+- No authentication, database, server cache, persistent learning progress or cross-device synchronization. Only the language preference is in localStorage; PDF/content/answers stay in browser memory for the current page session.
+- PDF limit: 10 MB. Multipart body limit: 10 MB + 256 KB. Translation source limit: 192 KB. Video JSON limit: 8 KB. Oversized generated content may need a shorter source document.
+- Gemini SDK timeout: 90 seconds; browser timeout: 110 seconds. YouTube backend timeout: 15 seconds across search/metadata requests; browser timeout: 35 seconds. Retries are user-triggered and bounded to one attempt per action.
+- AI may omit topics, misinterpret diagrams or produce incorrect explanations and translations. Schema/invariant checks validate structure and protected values, not all scientific claims. Original source pages should be reviewed.
+- Video language labels use reported audio language, falling back to reported default snippet language. Unknown language is labeled explicitly. Search does not guarantee spoken language, relevance, availability or playback.
+- Quiz answers are part of frontend data, suitable for self-study rather than secure examinations.
+- PDFs are sent to Gemini. Only topic metadata is sent to YouTube. The app does not persist uploads; external providers have their own data policies.
+- A public deployment still needs hosting-specific request-duration/upload limits, rate limiting, abuse controls and appropriate credential restrictions. This change does not deploy the site.

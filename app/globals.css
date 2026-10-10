@@ -25,3 +25,8 @@ legend .math-text {font-size:inherit;color:inherit;font-weight:inherit;margin:0}
 .related-video-card p{font-size:12px;margin:0 12px 10px}.related-video-card>a:last-child{font-size:12px;margin:0 12px;display:inline-block}
 .topic-videos .spinner{border-color:#c6d8cf;border-top-color:#276b52}
 @media(max-width:850px){.related-video-grid{grid-template-columns:1fr}.related-video-card img{max-height:220px}}
+.language-picker { display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0; }
+.language-picker select { background:#fff;color:#245c49;border:1px solid #c7d7cb;border-radius:8px;padding:9px 12px;font:inherit;max-width:150px; }
+.language-picker select:focus-visible { outline:3px solid #286d54;outline-offset:3px; }
+.related-video-card small { display:block;margin:8px 0;color:#566b61; }
+@media(max-width:600px){header{flex-wrap:wrap;gap:12px}.language-picker{margin-left:auto}.language-picker>span{display:none}.header-label{display:none}.workspace-top{gap:12px;flex-wrap:wrap}.filename{overflow-wrap:anywhere}.lesson h1,.overview-title{overflow-wrap:anywhere}.lesson-status{overflow-wrap:anywhere}}

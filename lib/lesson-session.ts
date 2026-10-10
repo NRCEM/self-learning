@@ -23,10 +23,10 @@ export class LessonSession {
     this.put(id, { status: 'loading', answers: {}, submitted: false });
     const task = Promise.resolve().then(() => generate(controller.signal)).then(lesson => {
       if (version !== this.version) return;
-      if (lesson.topicId !== id) throw new Error('Bài học trả về không khớp đề mục. Vui lòng thử lại.');
+      if (lesson.topicId !== id) throw new Error('Lesson topic does not match the request. Try again.');
       this.put(id, { status: 'ready', lesson, answers: {}, submitted: false });
     }).catch(error => {
-      if (version === this.version) this.put(id, { status: 'error', error: error instanceof Error ? error.message : 'Không thể tải bài học. Vui lòng thử lại.', answers: {}, submitted: false });
+      if (version === this.version) this.put(id, { status: 'error', error: error instanceof Error ? error.message : 'Unable to load the lesson. Try again.', answers: {}, submitted: false });
     }).finally(() => { if (version === this.version) { this.pending.delete(id); this.controllers.delete(id); } });
     this.pending.set(id, task); return task;
   }
