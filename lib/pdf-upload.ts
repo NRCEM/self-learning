@@ -1,15 +1,14 @@
 import { errorText } from './i18n.ts';
 import { PDFDocument } from 'pdf-lib';
 import { AnalysisError } from './analysis-errors.ts';
-import { MAX_PDF_BYTES } from './analysis-schema.ts';
-const MAX_BODY_BYTES = MAX_PDF_BYTES + 256 * 1024;
+import { MAX_PDF_BYTES, MAX_PDF_BODY_BYTES } from './upload-limits.ts';
 function fail(status: number, code: string, message: string): never { throw new AnalysisError(status, code, message); }
 export async function readPdfForm(request: Request) {
     if (!request.headers.get('content-type')?.toLowerCase().startsWith('multipart/form-data;')) {
       fail(400, 'INVALID_FORM', errorText('en', 'INVALID_FORM'));
     }
     const length = Number(request.headers.get('content-length'));
-    if (length > MAX_BODY_BYTES) fail(413, 'FILE_TOO_LARGE', errorText('en', 'FILE_TOO_LARGE'));
+    if (length > MAX_PDF_BODY_BYTES) fail(413, 'FILE_TOO_LARGE', errorText('en', 'FILE_TOO_LARGE'));
     if (!request.body) fail(400, 'MISSING_FILE', errorText('en', 'MISSING_FILE'));
     // Bound the actual stream, including requests with no Content-Length.
     const reader = request.body.getReader();
@@ -18,7 +17,7 @@ export async function readPdfForm(request: Request) {
       while (true) {
         const { done, value } = await reader.read(); if (done) break;
         bytes += value.byteLength;
-        if (bytes > MAX_BODY_BYTES) { await reader.cancel(); fail(413, 'FILE_TOO_LARGE', errorText('en', 'FILE_TOO_LARGE')); }
+        if (bytes > MAX_PDF_BODY_BYTES) { await reader.cancel(); fail(413, 'FILE_TOO_LARGE', errorText('en', 'FILE_TOO_LARGE')); }
         chunks.push(value);
       }
     } finally { reader.releaseLock(); }

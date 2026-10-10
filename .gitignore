@@ -7,3 +7,6 @@ tmp/diagnostics/
 # User documents and local diagnostic artifacts must never enter commits.
 *.[pP][dD][fF]
 tmp/
+
+# Vercel CLI project linkage and local deployment metadata.
+.vercel/

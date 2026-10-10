@@ -38,7 +38,7 @@ npm start
 
 ## Features and usage
 
-1. Select an unencrypted, valid PDF up to 10 MB. Analyze it to view the title, subject, summary and topics with physical PDF page references.
+1. Select an unencrypted, valid PDF up to 3 MiB (3,145,728 bytes; approximately 3.15 MB). Analyze it to view the title, subject, summary and topics with physical PDF page references.
 2. Open a topic to generate a lesson using the original PDF and selected topic. Lessons include objectives, explanations, formulas and symbols/units, worked examples, misconceptions and five multiple-choice questions. Added examples are explicitly labeled.
 3. Answer all questions and submit. Scoring runs in code: each correct answer earns two points. Correct answers and explanations appear after submission. Retaking clears only that topic's answers and result.
 4. Related videos load independently. Each card links to the original YouTube video and displays its original title, channel, thumbnail and reported language, when available. There is no embedded player.
@@ -103,7 +103,7 @@ Manual checklist:
 Live bilingual diagnostic (calls configured Google services and consumes quota):
 
 ```powershell
-node --experimental-strip-types --conditions=react-server scripts/verify-languages.mjs path/to/private.pdf
+node --experimental-strip-types --conditions=react-server scripts/verify-languages.mjs path/to/private.pdf [base-URL]
 ```
 
 It checks English generation, Vietnamese translation with preserved protected fields, and video requests in both languages. Outputs go to ignored `tmp/diagnostics/`. Historical troubleshooting is recorded in [GEMINI-DIAGNOSIS.md](GEMINI-DIAGNOSIS.md).
@@ -111,10 +111,68 @@ It checks English generation, Vietnamese translation with preserved protected fi
 ## MVP limits
 
 - No authentication, database, server cache, persistent learning progress or cross-device synchronization. Only the language preference is in localStorage; PDF/content/answers stay in browser memory for the current page session.
-- PDF limit: 10 MB. Multipart body limit: 10 MB + 256 KB. Translation source limit: 192 KB. Video JSON limit: 8 KB. Oversized generated content may need a shorter source document.
+- PDF limit: 3 MiB. Multipart body limit: 3 MiB + 256 KiB (3,407,872 bytes), below Vercel’s 4.5 MB payload cap. Translation source limit: 192 KiB. Video JSON limit: 8 KiB. Oversized generated content may need a shorter source document.
 - Gemini SDK timeout: 90 seconds; browser timeout: 110 seconds. YouTube backend timeout: 15 seconds across search/metadata requests; browser timeout: 35 seconds. Retries are user-triggered and bounded to one attempt per action.
 - AI may omit topics, misinterpret diagrams or produce incorrect explanations and translations. Schema/invariant checks validate structure and protected values, not all scientific claims. Original source pages should be reviewed.
 - Video language labels use reported audio language, falling back to reported default snippet language. Unknown language is labeled explicitly. Search does not guarantee spoken language, relevance, availability or playback.
 - Quiz answers are part of frontend data, suitable for self-study rather than secure examinations.
 - PDFs are sent to Gemini. Only topic metadata is sent to YouTube. The app does not persist uploads; external providers have their own data policies.
-- A public deployment still needs hosting-specific request-duration/upload limits, rate limiting, abuse controls and appropriate credential restrictions. This change does not deploy the site.
+- A public deployment still needs rate limiting, abuse controls and appropriate credential restrictions. Request-duration/upload limits are configured for Vercel as documented below. This change does not deploy the site.
+
+## Deploy to Vercel
+
+The repository is [NRCEM/self-learning](https://github.com/NRCEM/self-learning); production branch: `main`.
+
+### Hosting configuration
+
+Vercel Functions cap both request and response payloads at **4.5 MB**. PDFs go through the function as multipart FormData; the same original PDF is sent again for lessons and translations. The app therefore uses a shared frontend/backend **3 MiB PDF limit**, with **256 KiB** reserved for translation JSON and multipart framing. Maximum accepted multipart body is **3,407,872 bytes**. This applies locally too, so local behavior matches hosting. Increasing a Next.js body-size setting cannot increase Vercel's function payload cap. Larger PDFs require a different upload/storage architecture, which is outside this deployment preparation. See [Vercel Function limits](https://vercel.com/docs/functions/limitations).
+
+All API routes use the **Node.js runtime**. `package.json` pins `engines.node` to `24.x`, a [supported Vercel Node.js version](https://vercel.com/docs/functions/runtimes/node-js/node-js-versions). No custom server, filesystem persistence, database or Blob storage is required. Credentials are read inside server-only modules at request time; Google requests use the official Gemini SDK and backend `fetch`.
+
+| Route | Vercel maximum duration | Upstream timeout | Browser timeout |
+| --- | --- | --- | --- |
+| `/api/analyze` | 120 seconds | Gemini: 90 seconds, one attempt | 110 seconds |
+| `/api/lesson` | 120 seconds | Gemini: 90 seconds, one attempt | 110 seconds |
+| `/api/translate` | 120 seconds | Gemini: 90 seconds, one attempt | 110 seconds |
+| `/api/videos` | 30 seconds | YouTube: 15 seconds across search and metadata | 35 seconds |
+
+Each route declares a literal `maxDuration`; `vercel.json` enables Fluid Compute explicitly with `fluid: true`. These durations include headroom for PDF parsing and response validation and are not promised response times. **Keep Fluid Compute enabled** in the project settings. Hobby with Fluid Compute supports a 300-second maximum; legacy Hobby without it has a 60-second maximum and cannot honor these 120-second Gemini routes. See [duration configuration](https://vercel.com/docs/functions/configuring-functions/duration) and [limits](https://vercel.com/docs/functions/limitations). This setup does not require a Pro upgrade or changing the working Gemini model.
+
+A platform-generated HTTP 413/504/5xx can arrive without the app's JSON error envelope. The frontend maps those statuses to localized upload-limit, timeout or server-unavailable messages with retry controls. Provider JSON errors still retain their specific error codes. The production smoke-test overview and lesson responses are below the platform response cap; oversized requests are rejected without a sample fallback.
+
+### Import and configure
+
+1. Open [Vercel New Project](https://vercel.com/new), connect GitHub and import **NRCEM/self-learning**. If the repository is private or missing, grant the Vercel GitHub integration access to that repository.
+2. Select the **Next.js** framework preset and repository root (`./`). Use **Node.js 24.x**, install command `npm ci`, build command `npm run build`, and the framework's default output directory. Do not configure a static export, custom output directory or `npm run dev` as the build command.
+3. Add these exact environment variables before deploying. Select **Production** and also **Preview** if preview deployments will be tested:
+
+   | Variable | Value | Required |
+   | --- | --- | --- |
+   | `GEMINI_API_KEY` | Your existing working Google AI Studio API key | Yes, for analysis/lessons/translations |
+   | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Optional in code, recommended explicitly; this is the model successfully tested locally |
+   | `YOUTUBE_API_KEY` | Your existing key with YouTube Data API v3 enabled | Yes, for videos; lessons/quizzes work without it |
+
+   These are the only application environment variables. Never prefix keys with `NEXT_PUBLIC_`, commit `.env.local`, or upload private PDFs to GitHub. The project does not enable Google billing or use Vercel AI Gateway. Server API keys need restrictions compatible with requests from Vercel; local-machine IP restrictions or browser referrer restrictions can reject server requests. Standard Vercel functions do not provide this project's local IP address.
+
+4. Click **Deploy**. In project **Settings → Functions**, verify Fluid Compute is enabled and the deployed routes have the above durations. If settings changed after deployment, redeploy from the current `main` commit. New projects normally enable Fluid Compute by default; confirm it rather than assuming it for older projects.
+5. Open the deployment URL. Subsequent pushes to the connected production branch trigger deployments. Environment variable changes apply to new deployments, so redeploy after changing them. See [Vercel deployment documentation](https://vercel.com/docs/deployments).
+
+### Verify the deployed application
+
+- Use a real PDF under 3 MiB. Run upload → overview → topic → lesson → videos → quiz. Test English and Vietnamese, translation after submission, cached return and document replacement.
+- Reject a PDF above 3 MiB in the browser. For request limits, use a controlled API request and confirm HTTP 413; this avoids spending Gemini quota on invalid uploads.
+- Check **Logs** for the relevant route if something fails. `FUNCTION_PAYLOAD_TOO_LARGE` indicates a platform body limit; `FUNCTION_INVOCATION_TIMEOUT` indicates a function duration/configuration problem. Gemini/YouTube codes in the app indicate a provider/configuration failure. Do not paste credentials or private PDF contents into shared logs.
+- Keep a Vercel Preview deployment protected while checking keys and provider access. No database is needed; document cache is browser memory and works across stateless function invocations.
+
+For a local production-runtime smoke test, first build and start on a separate port:
+
+```powershell
+npm run build
+npm start -- --port 3001
+# In another terminal:
+node --experimental-strip-types --conditions=react-server scripts/verify-languages.mjs path/to/private.pdf http://localhost:3001
+```
+
+The same diagnostic accepts a public deployment URL after deployment. Protected previews may require browser verification or Vercel access credentials; the script does not bypass deployment protection.
+
+Deployment preparation validates code, Node.js production routes and provider calls locally. An actual Vercel deployment, its account settings, key restrictions and cloud-specific behavior remain unverified until the imported project is deployed and the smoke checklist is completed.

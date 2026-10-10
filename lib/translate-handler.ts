@@ -1,3 +1,4 @@
+import { MAX_TRANSLATION_BYTES } from './upload-limits.ts';
 import { analysisSchema, type DocumentAnalysis } from './analysis-schema.ts';
 import { lessonSchema, lessonFitsContext, type Lesson } from './lesson-schema.ts';
 import { readPdfForm } from './pdf-upload.ts';
@@ -19,7 +20,7 @@ export async function handleTranslate(request: Request, translate: Translator) {
  try {
   const {pdf,form,pageCount}=await readPdfForm(request); const language=readLanguage(form);
   const kinds=form.getAll('kind'); const sources=form.getAll('source');
-  if(kinds.length!==1 || !['overview','lesson'].includes(String(kinds[0])) || sources.length!==1 || typeof sources[0]!=='string' || Buffer.byteLength(sources[0])>192*1024) throw new AnalysisError(400,'INVALID_TRANSLATION_SOURCE',errorText('en','INVALID_TRANSLATION_SOURCE'));
+  if(kinds.length!==1 || !['overview','lesson'].includes(String(kinds[0])) || sources.length!==1 || typeof sources[0]!=='string' || Buffer.byteLength(sources[0])>MAX_TRANSLATION_BYTES) throw new AnalysisError(400,'INVALID_TRANSLATION_SOURCE',errorText('en','INVALID_TRANSLATION_SOURCE'));
   const kind=kinds[0] as ContentKind; const schema=kind==='overview'?analysisSchema:lessonSchema;
   let raw:unknown;try{raw=JSON.parse(sources[0]);}catch{throw new AnalysisError(400,'INVALID_TRANSLATION_SOURCE',errorText('en','INVALID_TRANSLATION_SOURCE'));}
   const source=schema.safeParse(raw);

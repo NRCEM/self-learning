@@ -18,7 +18,7 @@ The bilingual change was verified with the existing configured Gemini model, `ge
 ## Automated checks
 
 - TypeScript validation and production build pass.
-- 55 tests pass without Google keys or live network calls.
+- 58 tests pass without Google keys or live network calls.
 - Coverage includes PDF stream/size/parser validation, invalid languages, source page bounds, output schemas and safe credential handling.
 - Translation tests reject changed IDs, answers, source pages, formula fields, delimited math, numeric option positions and array sizes.
 - Session tests cover simultaneous language requests sharing canonical content, topic-specific quiz results, per-language video caches, explicit retry, out-of-order replies, document replacement and replacement before scheduled work starts.
@@ -33,3 +33,13 @@ The bilingual change was verified with the existing configured Gemini model, `ge
 - No public deployment, persistent sessions, login/database, production abuse control or hosting-specific duration/upload limits were tested.
 
 See [README.md](README.md) for the current setup, architecture and manual verification checklist. Historical Gemini investigation is separate in [GEMINI-DIAGNOSIS.md](GEMINI-DIAGNOSIS.md).
+
+## Vercel deployment preparation
+
+- The shared PDF cap is now 3 MiB (3,145,728 bytes), with a multipart cap of 3 MiB + 256 KiB. A test serializes the largest accepted PDF plus 192 KiB translation context and verifies that the complete request stays below Vercel's 4.5 MB platform cap. An oversized stream is rejected before parsing or calling Gemini.
+- `vercel.json` explicitly enables Fluid Compute. All routes compile as dynamic Node.js handlers. The generated `.next/server/functions-config-manifest.json` records `/api/analyze`, `/api/lesson` and `/api/translate` at 120 seconds, and `/api/videos` at 30 seconds. Node.js 24.x is pinned in package metadata.
+- A local **production** server on port 3001 was tested with the actual three-page physics PDF and existing Google credentials. Analysis, lesson creation, overview translation, lesson translation and video searches for both languages all returned HTTP 200. Translation invariants passed. Individual timings were 6.9, 9.6, 37.0, 9.3 and approximately 0.4 seconds respectively.
+- Function traces for all four routes include no private PDFs, `.env.local` or local diagnostic paths. Keys remain server-only. Frontend tests map non-JSON hosting HTTP 413/504/5xx to localized errors.
+- Browser on the local production build: a PDF one byte above the 3 MiB limit was rejected before any API call, with readable English and Vietnamese messages.
+- Typecheck, all 58 tests and production build pass. The temporary production test server is stopped after verification.
+- **Not yet verified on Vercel:** deployment/account settings, Fluid Compute configuration, cloud function execution, Google key restrictions from Vercel IPs, deployment protection and public URLs. The repository is prepared for import; the post-deploy checklist in README remains necessary.

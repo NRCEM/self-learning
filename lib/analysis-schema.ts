@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const MAX_PDF_BYTES = 10 * 1024 * 1024;
+export { MAX_PDF_BYTES } from './upload-limits.ts';
 export const topicSchema = z.strictObject({
   id: z.string().trim().min(1).max(80),
   name: z.string().trim().min(1).max(200),
